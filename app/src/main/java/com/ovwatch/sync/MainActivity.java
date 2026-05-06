@@ -9,7 +9,11 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
@@ -47,6 +51,7 @@ public class MainActivity extends Activity {
     private final ArrayList<BluetoothDevice> devices = new ArrayList<>();
     private final ArrayList<String> deviceNames = new ArrayList<>();
     private final ArrayList<String> commLogs = new ArrayList<>();
+    private final ArrayList<WatchData> chartPoints = new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private BluetoothAdapter bluetoothAdapter;
@@ -75,6 +80,7 @@ public class MainActivity extends Activity {
     private TextView fallText;
     private TextView historyText;
     private TextView commLogText;
+    private HealthChartView chartView;
     private Button autoButton;
 
     private final Runnable autoSyncRunnable = new Runnable() {
@@ -168,6 +174,11 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(autoButton, matchWrap());
+
+        TextView chartTitle = sectionTitle("Trend chart");
+        root.addView(chartTitle);
+        chartView = new HealthChartView(this, chartPoints);
+        root.addView(chartView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190)));
 
         alertText = card(root, "状态提醒", "暂无异常");
         timeText = card(root, "同步时间", "--");
@@ -544,8 +555,20 @@ public class MainActivity extends Activity {
         humiText.setText(data.humi >= 0 ? data.humi + " %" : "-- %");
         batText.setText(data.bat >= 0 ? data.bat + " %" : "-- %");
         fallText.setText(data.fall == 1 ? "疑似摔倒" : "未触发");
+        addChartPoint(data);
         saveHistory(data);
         evaluateAlert(data);
+    }
+
+    private void addChartPoint(WatchData data) {
+        WatchData point = data.copy();
+        chartPoints.add(point);
+        while (chartPoints.size() > 40) {
+            chartPoints.remove(0);
+        }
+        if (chartView != null) {
+            chartView.invalidate();
+        }
     }
 
     private void evaluateAlert(WatchData data) {
@@ -667,6 +690,102 @@ public class MainActivity extends Activity {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
     }
 
+    private static class HealthChartView extends View {
+        private final ArrayList<WatchData> points;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF plot = new RectF();
+
+        HealthChartView(Context context, ArrayList<WatchData> points) {
+            super(context);
+            this.points = points;
+            setMinimumHeight(190);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float density = getResources().getDisplayMetrics().density;
+            float width = getWidth();
+            float height = getHeight();
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.rgb(244, 247, 250));
+            canvas.drawRoundRect(0, 0, width, height, 10 * density, 10 * density, paint);
+
+            plot.set(42 * density, 28 * density, width - 12 * density, height - 28 * density);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1 * density);
+            paint.setColor(Color.rgb(216, 224, 232));
+            for (int i = 0; i < 4; i++) {
+                float y = plot.top + plot.height() * i / 3f;
+                canvas.drawLine(plot.left, y, plot.right, y, paint);
+            }
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setTextSize(11 * density);
+            paint.setColor(Color.rgb(82, 96, 112));
+            canvas.drawText("HR", 12 * density, 20 * density, paint);
+            paint.setColor(Color.rgb(229, 77, 87));
+            canvas.drawText("HR", 42 * density, 20 * density, paint);
+            paint.setColor(Color.rgb(45, 117, 227));
+            canvas.drawText("SpO2", 82 * density, 20 * density, paint);
+            paint.setColor(Color.rgb(235, 151, 49));
+            canvas.drawText("Temp", 132 * density, 20 * density, paint);
+            paint.setColor(Color.rgb(52, 168, 83));
+            canvas.drawText("Step", 190 * density, 20 * density, paint);
+
+            if (points.size() < 2) {
+                paint.setColor(Color.rgb(82, 96, 112));
+                paint.setTextSize(14 * density);
+                canvas.drawText("No trend data yet", plot.left, plot.centerY(), paint);
+                return;
+            }
+
+            drawSeries(canvas, density, 45, 150, Color.rgb(229, 77, 87), new ValueGetter() {
+                @Override public int get(WatchData data) { return data.hr; }
+            });
+            drawSeries(canvas, density, 80, 100, Color.rgb(45, 117, 227), new ValueGetter() {
+                @Override public int get(WatchData data) { return data.spo2; }
+            });
+            drawSeries(canvas, density, 0, 45, Color.rgb(235, 151, 49), new ValueGetter() {
+                @Override public int get(WatchData data) { return data.temp; }
+            });
+            drawSeries(canvas, density, 0, 8000, Color.rgb(52, 168, 83), new ValueGetter() {
+                @Override public int get(WatchData data) { return data.step; }
+            });
+        }
+
+        private void drawSeries(Canvas canvas, float density, int min, int max, int color, ValueGetter getter) {
+            Path path = new Path();
+            boolean started = false;
+            int n = points.size();
+            for (int i = 0; i < n; i++) {
+                int value = getter.get(points.get(i));
+                if (value < 0) {
+                    continue;
+                }
+                if (value < min) value = min;
+                if (value > max) value = max;
+                float x = n == 1 ? plot.left : plot.left + plot.width() * i / (float)(n - 1);
+                float y = plot.bottom - plot.height() * (value - min) / (float)(max - min);
+                if (!started) {
+                    path.moveTo(x, y);
+                    started = true;
+                } else {
+                    path.lineTo(x, y);
+                }
+            }
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2.5f * density);
+            paint.setColor(color);
+            canvas.drawPath(path, paint);
+        }
+
+        private interface ValueGetter {
+            int get(WatchData data);
+        }
+    }
+
     private static class WatchData {
         String date = "--";
         String time = "--";
@@ -677,6 +796,20 @@ public class MainActivity extends Activity {
         int step = -1;
         int bat = -1;
         int fall = 0;
+
+        WatchData copy() {
+            WatchData data = new WatchData();
+            data.date = date;
+            data.time = time;
+            data.hr = hr;
+            data.spo2 = spo2;
+            data.temp = temp;
+            data.humi = humi;
+            data.step = step;
+            data.bat = bat;
+            data.fall = fall;
+            return data;
+        }
 
         static WatchData parse(String line) {
             WatchData data = new WatchData();
