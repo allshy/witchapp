@@ -31,6 +31,7 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -363,13 +364,13 @@ public class MainActivity extends Activity {
                         int count = inputStream.read(buffer);
                         for (int i = 0; i < count; i++) {
                             char ch = (char) buffer[i];
-                            if (ch == '\n') {
+                            if (ch == '\n' || ch == '\r') {
                                 final String message = line.toString().trim();
                                 line.setLength(0);
                                 if (!message.isEmpty()) {
                                     handleMessage(message);
                                 }
-                            } else if (ch != '\r') {
+                            } else {
                                 line.append(ch);
                             }
                         }
@@ -405,8 +406,9 @@ public class MainActivity extends Activity {
                         });
                         return;
                     }
-                    appendLog("TX " + command);
-                    outputStream.write(command.getBytes());
+                    String frame = command.endsWith("\r\n") ? command : command + "\r\n";
+                    appendLog("TX " + command + "\\r\\n");
+                    outputStream.write(frame.getBytes(StandardCharsets.US_ASCII));
                     outputStream.flush();
                     runOnUiThread(new Runnable() {
                         @Override
