@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
 
     private final ArrayList<BluetoothDevice> devices = new ArrayList<>();
     private final ArrayList<String> deviceNames = new ArrayList<>();
+    private final ArrayList<String> commLogs = new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private BluetoothAdapter bluetoothAdapter;
@@ -57,6 +58,7 @@ public class MainActivity extends Activity {
     private int lowHrCount;
     private int lowSpo2Count;
     private long lastAlertAt;
+    private WatchData legacyData = new WatchData();
 
     private Spinner deviceSpinner;
     private ArrayAdapter<String> deviceAdapter;
@@ -71,6 +73,7 @@ public class MainActivity extends Activity {
     private TextView batText;
     private TextView fallText;
     private TextView historyText;
+    private TextView commLogText;
     private Button autoButton;
 
     private final Runnable autoSyncRunnable = new Runnable() {
@@ -189,6 +192,11 @@ public class MainActivity extends Activity {
         root.addView(historyTitle);
         historyText = label("");
         root.addView(historyText);
+
+        TextView commTitle = sectionTitle("通信日志");
+        root.addView(commTitle);
+        commLogText = label("等待同步");
+        root.addView(commLogText);
 
         setContentView(scrollView);
     }
@@ -397,8 +405,15 @@ public class MainActivity extends Activity {
                         });
                         return;
                     }
+                    appendLog("TX " + command);
                     outputStream.write(command.getBytes());
                     outputStream.flush();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            statusText.setText("已发送同步命令，等待手环回复");
+                        }
+                    });
                 } catch (IOException ex) {
                     runOnUiThread(new Runnable() {
                         @Override
@@ -412,6 +427,17 @@ public class MainActivity extends Activity {
     }
 
     private void handleMessage(final String message) {
+        appendLog("RX " + message);
+        final WatchData legacy = parseLegacyMessage(message);
+        if (legacy != null) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    updateData(legacy);
+                }
+            });
+            return;
+        }
         if (message.startsWith("OVDATA,")) {
             final WatchData data = WatchData.parse(message);
             runOnUiThread(new Runnable() {
@@ -429,6 +455,82 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    private WatchData parseLegacyMessage(String message) {
+        if (message.startsWith("data:")) {
+            legacyData.date = message.substring(5).trim();
+            return legacyData;
+        }
+        if (message.startsWith("time:")) {
+            legacyData.time = message.substring(5).trim();
+            return legacyData;
+        }
+        if (message.startsWith("humidity:")) {
+            legacyData.humi = parseFirstInt(message, legacyData.humi);
+            return legacyData;
+        }
+        if (message.startsWith("temperature:")) {
+            legacyData.temp = parseFirstInt(message, legacyData.temp);
+            return legacyData;
+        }
+        if (message.startsWith("Heart Rate:")) {
+            legacyData.hr = parseFirstInt(message, legacyData.hr);
+            return legacyData;
+        }
+        if (message.startsWith("SPO2:")) {
+            legacyData.spo2 = parseFirstInt(message, legacyData.spo2);
+            return legacyData;
+        }
+        if (message.startsWith("Step today:")) {
+            legacyData.step = parseFirstInt(message, legacyData.step);
+            return legacyData;
+        }
+        return null;
+    }
+
+    private int parseFirstInt(String text, int fallback) {
+        StringBuilder builder = new StringBuilder();
+        boolean started = false;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if ((ch >= '0' && ch <= '9') || (!started && ch == '-')) {
+                builder.append(ch);
+                started = true;
+            } else if (started) {
+                break;
+            }
+        }
+        if (builder.length() == 0 || "-".contentEquals(builder)) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(builder.toString());
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
+    private void appendLog(final String line) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                commLogs.add(0, new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()) + "  " + line);
+                while (commLogs.size() > 8) {
+                    commLogs.remove(commLogs.size() - 1);
+                }
+                StringBuilder builder = new StringBuilder();
+                for (String item : commLogs) {
+                    if (builder.length() > 0) {
+                        builder.append('\n');
+                    }
+                    builder.append(item);
+                }
+                if (commLogText != null) {
+                    commLogText.setText(builder.toString());
+                }
+            }
+        });
     }
 
     private void updateData(WatchData data) {
