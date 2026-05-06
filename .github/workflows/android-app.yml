@@ -1,0 +1,50 @@
+name: Build Android APP
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - ".github/workflows/android-app.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - ".github/workflows/android-app.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "8.13"
+
+      - name: Prepare Android SDK path
+        run: echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android SDK packages
+        run: yes | sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: ov-watch-sync-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
