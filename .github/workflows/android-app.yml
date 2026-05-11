@@ -1,15 +1,17 @@
-name: Build Android APP
+name: Build Android Apps
 
 on:
   push:
     paths:
       - "app/**"
+      - "debug-console/**"
       - "build.gradle"
       - "settings.gradle"
       - ".github/workflows/android-app.yml"
   pull_request:
     paths:
       - "app/**"
+      - "debug-console/**"
       - "build.gradle"
       - "settings.gradle"
       - ".github/workflows/android-app.yml"
@@ -21,16 +23,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up JDK
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
 
@@ -40,11 +42,17 @@ jobs:
       - name: Install Android SDK packages
         run: yes | sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Build debug APKs
+        run: gradle :app:assembleDebug :debug-console:assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v7
+      - name: Upload sync APK
+        uses: actions/upload-artifact@v4
         with:
           name: ov-watch-sync-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload debug console APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: witchapp-debug-console-apk
+          path: debug-console/build/outputs/apk/debug/*.apk

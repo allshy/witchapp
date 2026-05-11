@@ -1,15 +1,12 @@
+# IDE
+**/.vscode/
+.idea/
+
+# Android build output
 .gradle/
-build/
 **/build/
 local.properties
 
-.idea/
-*.iml
-.cxx/
-captures/
-
-*.apk
-*.aab
-
+# OS
 .DS_Store
 Thumbs.db

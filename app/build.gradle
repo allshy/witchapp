@@ -3,19 +3,14 @@ plugins {
 }
 
 android {
-    namespace "com.allshy.witchapp"
-    compileSdk 35
+    namespace = "com.ovwatch.sync"
+    compileSdk = 36
 
     defaultConfig {
-        applicationId "com.allshy.witchapp"
-        minSdk 23
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        applicationId = "com.ovwatch.sync"
+        minSdk = 23
+        targetSdk = 36
+        versionCode = 1
+        versionName = "0.1.0"
     }
 }

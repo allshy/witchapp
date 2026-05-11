@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "WitchApp"
 include ":app"
+include ":debug-console"
